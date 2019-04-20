@@ -6,6 +6,7 @@
 
 //Data structures//
 
+// Point will store vertex coordinates, but each quad-edge will have its OWN two Point fields, quad-edges that share a vertex will NOT reference the same Point objects, but the two edges in the same quad-edge WILL reference the same point fields if appropriate. This makes updating Org/Dest easy. 
 struct Point {
 	double x;
 	double y;
@@ -13,6 +14,34 @@ struct Point {
 
 typedef struct Point Point; 
 
+//TODO: figure out if this is ok fp arithmetic
+int equal(Point *p1, Point *p2) 
+{
+	return (p1->x==p2->x) && (p1->y==p2->y);
+}
+// Return 1 if (p1, p2, p3) CCW, 0 if collinear, -1 if clockwise
+int ccw(Point *p1, Point *p2, Point *p3) 
+{
+
+	double ap1[2] = {p1->x, p1->y};
+	double ap2[2] = {p2->x, p2->y};
+	double ap3[3] = {p3->x, p3->y};
+	double o2d = orient2d(ap1, ap2, ap3);
+	if (o2d < 0) return -1;
+	else if (o2d == 0) return 0;
+	else return 1;
+}
+
+// Return 1 if p4 lies inside p1p2p3, 0 if cocircular, -1 if p4 lies outside p1p2p3
+int in_circle(Point *p1, Point *p2, Point *p3, Point *p4)
+{
+	double ap1[2] = {p1->x, p1->y};
+	double ap2[2] = {p2->x, p2->y};
+	double ap3[2] = {p3->x, p3->y};
+	double ap4[2] = {p4->x, p4->y};
+	return incircle(ap1, ap2, ap3, ap4) > 0;
+} 
+// Utility for parsing command line, not important
 typedef struct {
 	int randomized;
 	int fast;
@@ -20,51 +49,54 @@ typedef struct {
 	char *out_filename;
 } Input;
 
+
+// Quad-edge will be 4 Edge structures pointing to each other. Two will correspond to an actual edge in the triangulation, and two their duals
 typedef struct Edge Edge;
-typedef struct QEdge QEdge;
 
 struct Edge {
 	Point *Org;
 	Point *Dest;
 	Edge *Next;
-	QEdge *Parent;
-	unsigned int r;
+	Edge *Rot;
 };
 
-struct QEdge {
-	Edge *edge[4];
-};
 
 //Basic edge operations//
 
 Edge *rot(Edge *e) 
-	{return e->Parent->edge[(e->r + 1)%4];}
+	{return e->Rot;}
 Edge *onext(Edge *e) 
 	{return e->Next;}
 Edge *sym(Edge *e) 
-	{return e->Parent->edge[(e->r + 2)%4];}
+	{return e->Rot->Rot;}
 Edge *rot_inv(Edge *e) 
-	{return e->Parent->edge[(e->r + 3)%4];}
+	{return e->Rot->Rot->Rot;}
 Edge *oprev(Edge *e)
 	{return rot(onext(rot(e)));}
 Edge *lprev(Edge *e)
 	{return sym(onext(e));}
 Edge *lnext(Edge *e) 
 	{return rot_inv(onext(rot(e)));}
-//TODO: Make this accept input points for edge
+Edge *dprev(Edge *e)
+	{return rot_inv(onext(rot_inv(e)));}
 Edge *make_edge()
 {
-	QEdge *quad = malloc(sizeof(QEdge));
- 	for (int i = 0; i < 4; i++) {
-		Edge *e = malloc(sizeof(Edge));
-		quad->edge[i] = e;
-		e->Parent = quad;
-	}
-	quad->edge[0]->Next = quad->edge[2];
-	quad->edge[2]->Next = quad->edge[0];
-	quad->edge[1]->Next = quad->edge[3];
-	quad->edge[3]->Next = quad->edge[1];
-	return quad->edge[0];	
+	Edge *e1 = malloc(sizeof(Edge)); Edge *e2 = malloc(sizeof(Edge));
+	Edge *e3 = malloc(sizeof(Edge)); Edge *e4 = malloc(sizeof(Edge));
+	Point *org = malloc(sizeof(Point));
+	Point *dest = malloc(sizeof(Point));	
+	e1->Rot = e2; e2->Rot = e3; e3->Rot = e4; e4->Rot = e1;
+	e1->Next = e1; e3->Next = e3;
+	e2->Next = e4; e4->Next = e2;
+	e1->Org = org; e1->Dest = dest;
+	e3->Org = dest; e3->Dest = org;
+	return e1;
+}
+//Used to update the Org/Dest of e and sym(e) simultaneously
+void set_equal(Point *p1, Point *p2)
+{
+	p1->x = p2->x;
+	p1->y = p2->y;
 }
 
 //splice edges
@@ -86,9 +118,12 @@ void delete_edge(Edge *e)
 	splice(e, oprev(e));
 	splice(sym(e), oprev(sym(e)));
 	free(e->Org); free(e->Dest);
-	QEdge *parent = e->Parent;
-	for (int i = 0; i < 4; i++) free(parent->edge[i]);
-	free(parent);
+	
+	for (int i = 0; i < 3; i++) {
+		Edge *prev = e; e = rot(e);
+		free(prev);
+	}
+	free(e);
 }
 
 void swap(Edge *e) 
@@ -97,29 +132,55 @@ void swap(Edge *e)
 	Edge *b = oprev(sym(e));
 	splice(e, a); splice(sym(e), b);
 	splice(e, lnext(e)); splice(sym(e), lnext(b));
-	e->Org = a->Dest; e->Dest = b->Dest;
+	set_equal(e->Org, a->Dest); set_equal(e->Dest, b->Dest);
 }
 
-//TODO: figure out if this is ok fp arithmetic
-int equal(Point *p1, Point *p2) 
-{
-	return (p1->x==p2->x) && (p1->y==p2->y);
-}
 // p = alpha*org + (1-alpha)*dest <-> alpha = (p - dest)/(org - dest)
 int on(Point *p, Edge *e)
 {
 	double point[2] = {p->x, p->y};
 	double p1[2] = {e->Org->x, e->Org->y};
 	double p2[2] = {e->Dest->x, e->Dest->y};
-	double alpha = (point[0] - p1[0])/(p2[0] - p1[0]);
-	return (orient2d(point, p1, p2) == 0) && (alpha >= 0) && (alpha <= 1);
+	return (orient2d(point, p1, p2) == 0) && (((point[0] <= p1[0]) || (point[0] <= p2[0])) && ((point[0] >= p1[0]) || (point[0] >= p2[0])));
+}
+int right_of(Point *p, Edge *e) 
+{
+	return ccw(e->Dest, e->Org, p) == 1;
+}
+int left_of(Point *p, Edge *e)
+{
+	return ccw(e->Org, e->Dest, p) == -1;
 }
 
-
-void insert_site(Point *x)
+Edge *connect(Edge *a, Edge *b) 
 {
-	Edge *e = locate(x);
-	if (equals(x, e->Org) || equals(x, e->Dest)) return;
+	Edge *e = make_edge();
+	set_equal(e->Org, a->Dest);
+	set_equal(e->Dest, b->Org);
+	splice(e, lnext(a));
+	splice(sym(e), b);
+	return e;
+}
+
+Edge *locate(Point *x, Edge *e)
+{
+	do {
+		if (on(x, e)) return e;
+		else if (right_of(x, e)) e = sym(e);
+		else if (left_of(x, onext(e))) e = onext(e);
+		else if (left_of(x, dprev(e))) e = dprev(e);
+		else {
+			if (on(x, onext(e))) return onext(e);
+			else if (on(x, dprev(e))) return dprev(e);
+			else return e;
+		}
+	} while(1);
+}
+
+void insert_site(Point *x, Edge *existing)
+{
+	Edge *e = locate(x, existing);
+	if (equal(x, e->Org) || equal(x, e->Dest)) return;
 	else if (on(x, e)) {
 		Edge *t = oprev(e);
 		delete_edge(e);
@@ -127,25 +188,23 @@ void insert_site(Point *x)
 	}
 	Edge *base = make_edge();
 	Point *first = e->Org;
-	base->Org = first;
-	base->Dest = x;
+	set_equal(base->Org, first);
+	set_equal(base->Dest, x);
 	splice(base, e);
-	while (!equal(e->Dest, first)) {
+	do {
 		base = connect(e, sym(base));
 		e = oprev(base);
-	}
+	} while (!equal(e->Dest, first));
 	e = oprev(base);
-	while(1) {
-		t = oprev(e);
-		if (right_of(t->Dest, e) && incircle(e->Org, t->Dest, e->Dest, x))
+	do {
+		Edge *t = oprev(e);
+		if (right_of(t->Dest, e) && in_circle(e->Org, t->Dest, e->Dest, x)) {
 			swap(e); 
-			e = t;
-		else if (equals(e->Org), first)
-			return;
+			e = oprev(e);
+		} else if (equal(e->Org, first)) return;
 		else e = lprev(onext(e));
-	}
+	} while(1);
 }
-//TODO: right_of, make sure memory freed, connect, locate
 
 //read command line arguments
 
@@ -212,6 +271,7 @@ int main(int argc, char *argv[])
 	Input input_args = {0,0,NULL,NULL};
 	int error = read_input(argc, argv, &input_args);
 	if (error) return 1;
+	
 	return 0;
 }
 
