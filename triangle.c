@@ -3,6 +3,7 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include "predicates.h"
+#include <time.h>
 #define INPUTLINESIZE 1024
 //Data structures//
 
@@ -336,6 +337,25 @@ int legal(Point *pi, Point *pj, Point *pk, Point *pl)
 	// See Dutch book p. 204
 	else return min(pk->id, pl->id) < min(pi->id, pj->id);  
 }
+void swap_ints(int *a, int *b)
+{
+	int temp = *a;
+	*a = *b;
+	*b = temp;
+}
+int get_random(int max)
+{
+	return rand() % max;
+}
+void shuffle(int *array, int length) 
+{
+	int i,j;
+	srand(time(0));
+	for (i = length-1; i > 0; i--) {
+		j = get_random(i+1);
+		swap_ints(&array[i], &array[j]);
+	}
+}	
 // return 1 if point x is a duplicate
 void insert_site(Point *x, Edge *existing)
 {
@@ -567,13 +587,20 @@ Edge *delaunay(int random, int fast, read_io *io, int *max_index)
 	printf("Edge p0 to p-2: %d -> %d\n", lnext(a)->Org->id, lnext(a)->Dest->id);
 	printf("Edge p-2 to p-1: %d -> %d\n", lprev(a)->Org->id, lprev(a)->Dest->id);
 	// insert points
+	int random_indices[io->num_points];
+	if (random) {
+		for (i = 0; i < io->num_points; i++) random_indices[i] = i;
+		shuffle(random_indices, io->num_points);
+	} 
 	for (i = 0; i < io->num_points; i++) {
-		if (i == index) continue;
+		if (random) index = random_indices[i];
+		else index = i;
+		if (index == *max_index) continue;
 		else {
-			x = io->point_list[2*i];
-			y = io->point_list[2*i+1];
-			printf("Inserting point %d %f %f\n", i+1, x, y);
-			Point p = {x, y, i+1};
+			x = io->point_list[2*index];
+			y = io->point_list[2*index+1];
+			printf("Inserting point %d %f %f\n", index+1, x, y);
+			Point p = {x, y, index+1};
 			insert_site(&p, a);
 		}
 	}
