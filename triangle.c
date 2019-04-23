@@ -1,70 +1,9 @@
-#include <stdio.h>
-#include <unistd.h>
-#include <ctype.h>
-#include <stdlib.h>
 #include "predicates.h"
-#include <time.h>
-#define INPUTLINESIZE 1024
-//Data structures//
+#include <stdlib.h>
+#include <stdio.h>
+#include "triangle.h"
 
-typedef struct Edge Edge;
-typedef struct node {
-	Edge *val;
-	struct node *next;
-	struct node *prev;
-} node_t;
-
-void enqueue(node_t **head, Edge *val) 
-{
-	node_t *new_node = malloc(sizeof(node_t));
-	if (!new_node) return;
-	new_node->val = val;
-	if (*head == NULL) {
-		new_node->next = new_node;
-		new_node->prev = new_node;
-		*head = new_node;
-	} else {
-		node_t *tail = (*head)->prev;
-		new_node->next = *head;
-		(*head)->prev = new_node;
-		new_node->prev = tail;
-		tail->next = new_node;
-		*head = new_node;
-	}
-}
-
-Edge *dequeue(node_t **head) {
-	if((*head) == NULL) return NULL;
-	Edge *retval;
-	if ((*head)->prev != (*head)) {
-		node_t *tail = (*head)->prev;
-		node_t *new_tail = tail->prev;
-		retval = tail->val;
-		free(tail);
-		new_tail->next = *head;
-		(*head)->prev = new_tail;
-	} else {
-		retval = (*head)->val;
-		free(*head);
-		*head = NULL;
-	}
-		
-	return retval;
-}
-// Point will store vertex coordinates, 
-// but each quad-edge will have its own two Point fields, 
-// quad-edges that share a vertex will not reference the same Point objects, 
-// but the two edges in the same quad-edge WILL reference the same point fields if appropriate. 
-// This makes updating Org/Dest easy. 
-struct Point {
-	double x;
-	double y;
-	int id; //negative id indicates symbolic point, 0 indicates lexico max point
-		// other ids indicate location in .node input file
-};
-
-typedef struct Point Point; 
-
+// negative points (-1 and -2) are symbolic, see Dutch book
 int symbolic(Point *p) 
 {
 	return (p->id < 0);
@@ -74,6 +13,7 @@ int real(Point *p)
 {
 	return !symbolic(p);
 }
+
 //return if points identical by id comparison
 int equal(Point *p1, Point *p2) 
 {
@@ -85,6 +25,7 @@ int lexico_comp(Point *p1, Point *p2)
 {	
 	if (p1->id == -1) return -1; // p-1 is smaller than all points
 	else if (p2->id == -1) return 1;
+
 	else if (p1->id == -2) return 1; // p-2 is larger than all points
 	else if (p2->id == -2) return -1;
 	// both points real
@@ -96,13 +37,13 @@ int lexico_comp(Point *p1, Point *p2)
 int ccw_symbolic(Point *p1, Point *p2, Point *p3)
 {
 	if (p1->id == -2) {	
-		if (p2->id == -1) return 0;
-		else return lexico_comp(p3, p2) < 0;
-	} else if (p2->id == -2) return ccw_symbolic(p2, p3, p1);
-	else if (p3->id == -2) return ccw_symbolic(p3, p1, p2);
-	else if (p1->id == -1) return lexico_comp(p3, p2) > 0;
-	else if (p2->id == -1) return ccw_symbolic(p2, p3, p1);
-	else return ccw_symbolic(p3, p1, p2);
+		if (p2->id == -1) return 0; // all points left of edge -2 ---> -1
+		else return lexico_comp(p3, p2) < 0; // see Dutch book 
+	} else if (p2->id == -2) return ccw_symbolic(p2, p3, p1); // move p2 to beginning to reduce cases
+	else if (p3->id == -2) return ccw_symbolic(p3, p1, p2); // move p3 to beginning
+	else if (p1->id == -1) return lexico_comp(p3, p2) > 0; 
+	else if (p2->id == -1) return ccw_symbolic(p2, p3, p1); // move p2 to beginning
+	else return ccw_symbolic(p3, p1, p2); // move p3 = -1 to beginning (some point must be symbolic)
 }	
 // Return 1 if (p1, p2, p3) CCW, 0 if collinear, -1 if clockwise
 int ccw(Point *p1, Point *p2, Point *p3) 
@@ -112,6 +53,7 @@ int ccw(Point *p1, Point *p2, Point *p3)
 		double ap1[2] = {p1->x, p1->y};
 		double ap2[2] = {p2->x, p2->y};
 		double ap3[3] = {p3->x, p3->y};
+		// from Shewchuk's robust predicates
 		double o2d = orient2d(ap1, ap2, ap3);
 		if (o2d < 0) return -1;
 		else if (o2d == 0) return 0;
@@ -128,55 +70,67 @@ int in_circle(Point *p1, Point *p2, Point *p3, Point *p4)
 	double ap2[2] = {p2->x, p2->y};
 	double ap3[2] = {p3->x, p3->y};
 	double ap4[2] = {p4->x, p4->y};
+	// from Shewchuk's robust predicates
 	if (incircle(ap1, ap2, ap3, ap4) > 0) {
-		printf("point %d in circle %d %d %d\n", p4->id, p1->id, p2->id, p3->id);
 		return 1;
 	}
 	else return 0;		 
 } 
-// Utility for parsing command line
-typedef struct {
-	int randomized;
-	int fast;
-	char *in_filename;
-	char *out_filename;
-} command_line;
 
-typedef struct {
-	int num_points;
-	double *point_list;
-} read_io;
-
-
-// Quad-edge will be 4 Edge structures pointing to each other. Two will correspond to an actual edge in the triangulation, and two their duals
-
-struct Edge {
-	Point *Org;
-	Point *Dest;
-	Edge *Next;
-	Edge *Rot;
-	int trav; // set trav to 1 if added to queue, 2 if its left face has been processed
-};
-
+// retrieve node in DAG corresponding to e's left face
+Node *left_face(Edge *e) 
+{
+	return e->face;
+}
+// update pointers to DAG for all edges that share e's left face
+void set_left_face(Edge *e, Node *f)
+{
+	Edge *next = lnext(e);
+	e->face = f;
+	while(next != e) {
+		next->face = f;
+		next = lnext(next);
+	}
+}
 
 //Basic edge operations//
 
+// rotate 90 deg ccw
 Edge *rot(Edge *e) 
 	{return e->Rot;}
+// next edge ccw around origin
 Edge *onext(Edge *e) 
 	{return e->Next;}
+// same edge but opposite direction
 Edge *sym(Edge *e) 
 	{return e->Rot->Rot;}
+// rotate 90 deg clockwise
 Edge *rot_inv(Edge *e) 
 	{return e->Rot->Rot->Rot;}
+// next edge clockwise around origin
 Edge *oprev(Edge *e)
 	{return rot(onext(rot(e)));}
+// next edge clockwise around left face
 Edge *lprev(Edge *e)
 	{return sym(onext(e));}
+// next edge ccw around left face
 Edge *lnext(Edge *e) 
 	{return rot(onext(rot_inv(e)));}
+// next edge clockwise around destination point
 Edge *dprev(Edge *e)
 	{return rot_inv(onext(rot_inv(e)));}
+
+// make a new edge and allocate space for its endpoints
+// returns edge e. The following holds for e: 
+// lnext(e1) = e3
+// lnext(e3) = e1
+// onext(e1) = e1
+// onext(e3) = e3
+// lnext(e2) = e2
+// lnext(e4) = e4
+// onext(e2) = e4
+// onext(e4) = e2
+// with e1 = e, e2 = rot(e), e3 = sym(e), e4 = rot_inv(e)
 Edge *make_edge()
 {
 	Edge *e1 = malloc(sizeof(Edge)); Edge *e2 = malloc(sizeof(Edge));
@@ -191,7 +145,9 @@ Edge *make_edge()
 	e3->Org = dest; e3->Dest = org;
 	return e1;
 }
-//Used to update the Org/Dest of e and sym(e) simultaneously
+// set fields of P1 to equal fields of p2
+// Used to update the Org/Dest of e and sym(e) simultaneously
+// and to create alias edges in the DAG
 void set_equal(Point *p1, Point *p2)
 {
 	p1->x = p2->x;
@@ -199,7 +155,7 @@ void set_equal(Point *p1, Point *p2)
 	p1->id = p2->id;
 }
 
-//splice edges
+//splice edges. see Guibas/Stolfi paper
 void splice(Edge *a, Edge *b) 
 {
 	Edge *alpha = rot(onext(a));
@@ -209,10 +165,8 @@ void splice(Edge *a, Edge *b)
 	
 	a->Next = bOnext; b->Next = aOnext;
 	alpha->Next = betaOnext; beta->Next = alphaOnext;
-//	rot(a)->Next = beta; rot(b)->Next = alpha;
-//	rot(alpha)->Next = b; rot(beta)->Next = a;
 }
-
+// delete edge and free its quadedge data structure
 void delete_edge(Edge *e) 
 {
 	Edge *a = oprev(e);
@@ -227,7 +181,7 @@ void delete_edge(Edge *e)
 	}
 	free(e);
 }
-
+// switch triangulation of e's two adjacent faces
 void swap(Edge *e) 
 {
 	Edge *a = oprev(e);
@@ -236,8 +190,8 @@ void swap(Edge *e)
 	splice(e, lnext(a)); splice(sym(e), lnext(b));
 	set_equal(e->Org, a->Dest); set_equal(e->Dest, b->Dest);
 }
-// p = alpha*org + (1-alpha)*dest <-> alpha = (p - dest)/(org - dest)
 // Use for real or symbolic points
+// Decides whether point p lies on the edge 
 int on(Point *p, Edge *e)
 {
 	if (symbolic(p) || symbolic(e->Org) || symbolic(e->Dest)) return 0;
@@ -254,10 +208,12 @@ int on(Point *p, Edge *e)
 int left_of_symbolic(Point *pj, Point *pi, Point *pk)
 {
 	if (pk->id == -1) {
-		if (pi->id == -2) return 0;
+		// all points lie right of line -2 ---> -1
+		if (pi->id == -2) return 0; 
 		else if (pj->id == -2) return 1;
 		else return lexico_comp(pj, pi) < 0;
 	} else if (pi->id == -1) {
+		// all points lie left of line -1 ----> -2
 		if (pk->id == -2) return 1;
 		else if (pj->id == -2) return 0;
 		else return lexico_comp(pj, pk) > 0;
@@ -267,9 +223,8 @@ int left_of_symbolic(Point *pj, Point *pi, Point *pk)
 	} else if (pk->id == -2) {
 		if (pj->id == -1) return 0;
 		else return lexico_comp(pj, pi) > 0;
-	// p-1 left of pi->pk if pk left of p-1 -> pi	
-	// p-2 left of pi->pk if pk left of p-2 -> pi
 	} else if (pj->id == -1) return lexico_comp(pi, pk) < 0;
+	// pj->id == -2
 	else return lexico_comp(pi, pk) > 0;
 }
 
@@ -293,43 +248,36 @@ Edge *connect(Edge *a, Edge *b)
 	splice(sym(e), b);
 	return e;
 }
-
+// locate point p in triangulation that includes edge e somewhere
+// using Green/Sibson "walking" method
+// with some fixes to avoid infinite loops
 Edge *locate(Point *x, Edge *e)
 {
 	do {
-//		printf("locating point from edge %d -> %d\n", e->Org->id, e->Dest->id);
 		if (on(x, e)) return e;
 		else if (right_of(x, e)) {
 			
-//			printf("right of %d -> %d\n", e->Org->id, e->Dest->id); 			
 			e = sym(e);
 		
 		} else if (left_of(x, onext(e))) { 
 			e = onext(e);
-//			printf("left of %d -> %d (onext(e))\n", e->Org->id, e->Dest->id);
 		} else if (left_of(x, dprev(e))) {
 			e = dprev(e);
-//			printf("left of %d -> %d (dprev(e))\n", e->Org->id, e->Dest->id); 
 		} else {
-			printf("in this triangle somewhere\n");
+			// in this triangle somewhere but might 
+			// lie on one of the other two edges
 			if (on(x, onext(e))) return onext(e);
 			else if (on(x, dprev(e))) return dprev(e);
 			else return e;
 		}
 	} while(1);
 }
-int min(int i, int j)
-{
-	if (i <= j) return i; 
-	else return j;
-}
-// check edge from pi -> pj with pl, pk vertices to the left/right respectively
+// check edge from pi -> pj with pl, pk the apex vertices to the left/right respectively
 int legal(Point *pi, Point *pj, Point *pk, Point *pl)
 {
 	// make sure pl -> pi -> pk are ccw oriented, otherwise edge cannot be flipped
 	if ((ccw(pl, pi, pk) != 1) || (ccw(pk, pj, pl) != 1)) return 1;
-	printf("ccw(%f %f, %f %f, %f %f) = 1\n", pl->x, pl->y, pi->x, pi->y, pk->x, pk->y);
-	// check if edge pi-pj on bounding triangle (always lega)
+	// check if edge pi -> pj on bounding triangle (always legal)
 	if ((pi->id <= 0) && (pj->id <=0)) return 1;
 	// if all points real use predicate
 	else if (real(pi) && real(pj) && real(pk) && real(pl)) 
@@ -337,226 +285,78 @@ int legal(Point *pi, Point *pj, Point *pk, Point *pl)
 	// See Dutch book p. 204
 	else return min(pk->id, pl->id) < min(pi->id, pj->id);  
 }
-void swap_ints(int *a, int *b)
+// assume x lies on edge e.
+// delete edge e, and connect x to surrounding vertices
+// t = oprev(e)
+Edge *prepare_on(Point *x, Edge *e, Edge *t) 
 {
-	int temp = *a;
-	*a = *b;
-	*b = temp;
-}
-int get_random(int max)
-{
-	return rand() % max;
-}
-void shuffle(int *array, int length) 
-{
-	int i,j;
-	srand(time(0));
-	for (i = length-1; i > 0; i--) {
-		j = get_random(i+1);
-		swap_ints(&array[i], &array[j]);
-	}
-}	
-// return 1 if point x is a duplicate
-void insert_site(Point *x, Edge *existing)
-{
-	printf("locating point\n");
-	Edge *e = locate(x, existing);
-	if (!lexico_comp(x, e->Org) || !lexico_comp(x, e->Dest)) return;
-	else if (on(x, e)) {
-		printf("point on existing edge\n");
-		Edge *t = oprev(e);
-		delete_edge(e);
-		e = t;
-	}
-	printf("connecting point to surroinding points\n");
-	printf("%d -> %d\n", e->Org->id, x->id);
+	delete_edge(e);
+	e = t;
 	Edge *base = make_edge();
 	Point *first = e->Org;
 	set_equal(base->Org, first);
 	set_equal(base->Dest, x);
 	splice(base, e);
 	do {
-		printf("connecting point to surrounding points\n");
 		base = connect(e, sym(base));
-		printf("%d -> %d\n", base->Org->id, base->Dest->id);
 		e = oprev(base);
 	} while (!equal(e->Dest, first));
-	printf("stopped on edge %d -> %d\n", e->Org->id, e->Dest->id);
-	e = oprev(base);
+	return base;
+}
+// assume x lies strictly inside e's left face.
+// connect x to surrounding vertices
+Edge *prepare_in(Point *x, Edge *e)
+{
+	Edge *base = make_edge();
+	Point *first = e->Org;
+	set_equal(base->Org, first);
+	set_equal(base->Dest, x);
+	splice(base, e);
 	do {
-//		printf("flipping illegal edges\n");
-//		printf("e->Org id: %d\n", e->Org->id);
-//		printf("first id: %d\n", first->id);
+		base = connect(e, sym(base));
+		e = oprev(base);
+	} while (!equal(e->Dest, first));
+	return base;
+}	
+void insert_site(Point *x, Edge *existing, int fast, Node **loc_tree)
+{
+	Edge *e;
+	if (fast) e = find(x, *loc_tree);
+	else e = locate(x, existing);
+	// make sure x doesn't lie on an existing vertex
+	if (!lexico_comp(x, e->Org) || !lexico_comp(x, e->Dest)) return;
+	Edge *base;
+	Point *first = e->Org;
+	if (on(x, e)) {
+		if (fast) base = extend_on(x, e);
+		else {
+			Edge *t = oprev(e);
+			base = prepare_on(x, e, t);
+		}
+	} else {
+		if (fast) base = extend_in(x, e);
+		else base = prepare_in(x, e);
+	}
+	e = oprev(base);
+	// flip illegal edges
+	do {
 		Edge *t = oprev(e);
 		if (right_of(t->Dest, e) && (!legal(e->Org, e->Dest, t->Dest, x))) {
-			printf("swapping %d -> %d\n", e->Org->id, e->Dest->id);
-			printf("t is %d -> %d\n", t->Org->id, t->Dest->id);
-			swap(e);
-			printf("swapped edge %d -> %d\n", e->Org->id, e->Dest->id); 
-			printf("oprev(sym(e)) is %d -> %d\n", oprev(sym(e))->Org->id, oprev(sym(e))->Dest->id);
+			if (fast) swap_location(e);
+			else swap(e);
 			e = oprev(e);
 		} else if (equal(e->Org, first)) return;
 		else e = lprev(onext(e));
 	} while(1);
 }
-//read line from input file-inspiration from Triangle/triangle_io.c
-char *readline(char *string, FILE *infile)
-{
-	char *result;
-	do {
-		result = fgets(string, INPUTLINESIZE, infile);
-		if (result == (char *) NULL) {
-			return result;
-		}
-		while ((*result != '\0') && (*result != '#')
-			&& (*result != '.') && (*result != '+') && (*result != '-')
-			&& ((*result < '0') || (*result > '9'))) {
-				result ++;
-		} 
-		
-	} while ((*result == '#') || (*result == '\0'));
-	return result;
-}
-//find the next field-copied from Triangle/triangle_io.c
-char *findfield(char *string)
-{
-	char *result;
-	result = string;
-	while ((*result != '\0') && (*result != '#') && (*result != ' ') && (*result != '\t')) {
-		result++;
-	}
-	while ((*result != '\0') && (*result != '#')
-		&& (*result != '.') && (*result != '+') && (*result != '-')
-		&& ((*result < '0') || (*result > '9'))) {
-			result++;
-	}
-	if (*result == '#') {
-		*result = '\0';
-	}
-	return result;
-}
-// read vertices from a .node file. Inspiration from Triangle/triangle_io.c
-int file_readnodes(FILE *file, int *firstnode, read_io *io)
-{
-	char inputline[INPUTLINESIZE];
-	char *stringptr;
-	int mesh_dim;
-	int invertices;
-	int i;
-	double x, y;
-	if (file == (FILE *) NULL) {
-		return 1;
-	}
-	stringptr = readline(inputline, file);
-	if (stringptr == (char *) NULL) {
-		return 1;
-	}
-	invertices = (int) strtol(stringptr, &stringptr, 0);
-	stringptr = findfield(stringptr);
-	if (*stringptr == '\0') {
-		mesh_dim = 2;
-	} else {
-		mesh_dim = (int) strtol(stringptr, &stringptr, 0);
-	}
-	// assume no attributes or boundary markers
-	if (invertices < 3) {
-		return 1;
-	}
-	if (mesh_dim != 2) {
-		return 1;
-	}
-	double *pointlist = malloc(2*invertices*sizeof(double));
-	//Read the vertices
-	for (i = 0; i < invertices; i++) {
-		stringptr = readline(inputline, file);
-		if (stringptr == (char *) NULL) {
-			free(pointlist);	
-			return 1;
-		}
-		if (i == 0) {
-			*firstnode = (int) strtol(stringptr, &stringptr, 0);
-		}
-		stringptr = findfield(stringptr);
-		if (*stringptr == '\0') {
-			free(pointlist);
-			return 1;
-		}
-		x = (double) strtod(stringptr, &stringptr);
-		stringptr = findfield(stringptr);
-		if (*stringptr == '\0') {
-			free(pointlist);
-			return 1;
-		}
-		y = (double) strtod(stringptr, &stringptr);
-		printf("Reading point: %d, %f, %f\n", i, x, y);
-		pointlist[2*i+0] = x;
-		pointlist[2*i+1] = y;
-	
-	}
-	io->num_points = invertices;
-	io->point_list = pointlist;
-	return 0;
-}
-
-//read command line arguments
-
-int read_input(int argc, char *argv[], command_line *input_args)
-{
-	int opt;
-	opterr = 0;
-	int index;
-	while((opt = getopt(argc, argv, "rfi:o:")) != -1)
-	{
-		switch(opt)
-		{
-			case 'r':
-				input_args->randomized = 1;
-				break;
-			case 'f':
-				input_args->fast = 1;
-				break;
-			case 'i':
-				input_args->in_filename =optarg;
-				break;
-			case 'o':
-				input_args->out_filename = optarg;
-				break;
-			case '?':
-				if (optopt == 'i')
-					fprintf(stderr, "Please specify input filename\n");
-				else if (isprint (optopt))
-					fprintf(stderr, "Unknown option '-%c'\n",optopt);
-				else 
-					fprintf(stderr, "Unknown option character '\\x%x'\n", optopt);
-				return 1;
-			default:
-				abort();
-		}
-	}
-	if (!input_args->in_filename) {
-		fprintf(stderr, "Please specify input filename\n");
-		return 1;
- 	}	
-	if (!input_args->out_filename) {
-		input_args->out_filename = "output.ele";
-	}
-	printf("randomized insertion = %d\n", input_args->randomized);
-	printf("fast point location = %d\n", input_args->fast);
-	printf("input filename = %s\n", input_args->in_filename);
-	printf("output_filename = %s\n", input_args->out_filename);
-	for(index = optind; index < argc; index++){
-		printf("extra argument: %s\n", argv[index]);
-	}
-	return 0;
-} 
-
+// triangulation handler
 Edge *delaunay(int random, int fast, read_io *io, int *max_index)
 {
 	int i;
 	double x,y;
 	Point max = {io->point_list[0], io->point_list[1], 0};
 	int index = 0;
-	// find lexico. max input point
+	// find lexico. max input point to use in bounding triangle
 	for (i = 1; i < io->num_points; i++) {
 		x = io->point_list[2*i]; 
 		y = io->point_list[2*i+1];
@@ -567,31 +367,31 @@ Edge *delaunay(int random, int fast, read_io *io, int *max_index)
 		}
 	
 	}
+	// remember its index so can swap it out when writing output file
 	*max_index = index;
-	printf("max is %f, %f\n", max.x, max.y);
+
 	Point neg1 = {0.0,0.0,-1};
 	Point neg2 = {0.0,0.0,-2};
 	// form bounding triangle using two symbolic points as in the Dutch book
-	printf("first make_edge\n");
 	Edge *a = make_edge();
 	Edge *b = make_edge();
-	printf("first splice\n");
 	splice(sym(a), b);
 	set_equal(a->Org, &neg2); 
 	set_equal(a->Dest, &max);
+	// initialize DAG if fast flag is set
+	Node **loc_tree;
+	if (fast) initialize(a, loc_tree);
+
 	set_equal(b->Org, &max);
-	set_equal(b->Dest, &neg1);
-	printf("first connect\n");
+	set_equal(b->Dest, &neg1); 
 	Edge *e = connect(b, a); 
-	printf("Edge p-1 to p0: %d -> %d\n", a->Org->id, a->Dest->id);
-	printf("Edge p0 to p-2: %d -> %d\n", lnext(a)->Org->id, lnext(a)->Dest->id);
-	printf("Edge p-2 to p-1: %d -> %d\n", lprev(a)->Org->id, lprev(a)->Dest->id);
-	// insert points
+	// randomize indices if random flag is set
 	int random_indices[io->num_points];
 	if (random) {
 		for (i = 0; i < io->num_points; i++) random_indices[i] = i;
 		shuffle(random_indices, io->num_points);
-	} 
+	}
+	// insert points! 
 	for (i = 0; i < io->num_points; i++) {
 		if (random) index = random_indices[i];
 		else index = i;
@@ -599,98 +399,57 @@ Edge *delaunay(int random, int fast, read_io *io, int *max_index)
 		else {
 			x = io->point_list[2*index];
 			y = io->point_list[2*index+1];
-			printf("Inserting point %d %f %f\n", index+1, x, y);
 			Point p = {x, y, index+1};
-			insert_site(&p, a);
+			insert_site(&p, a, fast, loc_tree);
 		}
 	}
-	printf("done inserting points\n");
+	// free DAG
+	// free_nodes(loc_tree); // this is broken
 	return a;
-}
-int file_writenodes(FILE *file, Edge *e, read_io *io, int first_node, int max_index)
-{
-	// header
-	//TODO: this is wrong. need number of triangles
-	fprintf(file, "%d 3 0\n", io->num_points);
-	node_t *q = NULL;
-//	printf("enqueueing\n");
-	enqueue(&q, e);
-	Point *p1; Point *p2; Point *p3;
-	// traverse all vertices in dual of quadedge data structure
-	int i = 1;
-	while (q) {
-//		printf("dequeueing\n");
-		e = dequeue(&q);
-//		printf("dequeued edge %d -> %d\n", e->Org->id, e->Dest->id);
-		if (e->trav == 2) continue; // left face already processed
-		else {	
-			e->trav = 2; lnext(e)->trav = 2; lprev(e)->trav = 2;
-			if (!(sym(e)->trav)) {
-				enqueue(&q, sym(e));
-				sym(e)->trav = 1;
-			} 
-			if (!(sym(lnext(e))->trav)) {
-				enqueue(&q, sym(lnext(e)));
-				sym(lnext(e))->trav = 1;
-			}
-			if (!(sym(lprev(e))->trav)) {
-				enqueue(&q, sym(lprev(e)));
-				sym(lprev(e))->trav = 1;
-			}
-			p1 = e->Org; p2 = e->Dest; p3 = lnext(e)->Dest;
-			// if any point is symbolic, skip the face
-			if (symbolic(p1) || symbolic(p2) || symbolic(p3)) {	
-				continue;
-			} else {
-				// write left face of current edge
-				//TODO: make sure node numbers correcti
-				if (p1->id == 0) p1->id = max_index + 1;
-				if (p2->id == 0) p2->id = max_index + 1;
-				if (p3->id == 0) p3->id = max_index + 1;
-				printf("Triangle %d %d %d %d\n", i, p1->id, p2->id, p3->id);
-				fprintf(file, "%d %d %d %d\n", i-1+first_node, p1->id, p2->id, p3->id); 
-				i++;	
-			
-				// add all symmetric edges to the queue
-				// if edge has already been added, skip it
-			}	// if both faces of the edge have been written, delete the edge
-		}
-						
-		if (sym(e)->trav == 2) delete_edge(e);
-	}
-	return i - 1;
 }
 
 int main(int argc, char *argv[])
 {
+	// initialize robust predicates
 	exactinit();
+
 	command_line input_args = {0,0,NULL,NULL};
-	printf("reading command line\n");
 	int error = read_input(argc, argv, &input_args);
-	if (error) return 1;
-	printf("done reading command line\n");
+	if (error) {
+		printf("Error reading command line\n");
+		return 1;
+	}
 	FILE *file;
 	file = fopen(input_args.in_filename, "r");
-	if (file == (FILE *) NULL) return 1;
+	if (file == (FILE *) NULL) {
+		printf("Error reading input file\n");
+		return 1;
+	}
 	int first_node;
 	read_io io;
-	printf("reading input file\n");
 	error = file_readnodes(file, &first_node, &io);
 	fclose(file);
 	if (error) {
+		printf("Error reading input file\n");
 		return 1;
 	}
-	printf("constructing triangulation\n");
 	int max_index;
+	// construct triangulation. e is any edge in the result
 	Edge *e = delaunay(input_args.randomized, input_args.fast, &io, &max_index);
+	// write results
 	file = fopen(input_args.out_filename, "w");
-	
 	if (file == (FILE *) NULL) {
+		printf("Error writing results\n");
 		return 1;
 	}
 	int num_tris = file_writenodes(file, e, &io, first_node, max_index);
 	fclose(file);
 	file = fopen(input_args.out_filename, "r+");
+	if (file == (FILE *) NULL) {
+		printf("Error writing results\n");
+		return 1;
+	}
+	// overwrite header of output file
 	fprintf(file, "%d 3 0\n", num_tris);
 	fclose(file);
 	free(io.point_list);
