@@ -1,6 +1,5 @@
 #include "triangle.h"
 #define INPUTLINESIZE 1024
-#include <time.h>
 // data structures used for the queue 
 // in order to record all triangles in the
 // .ele output file

@@ -290,8 +290,12 @@ int legal(Point *pi, Point *pj, Point *pk, Point *pl)
 // t = oprev(e)
 Edge *prepare_on(Point *x, Edge *e, Edge *t) 
 {
+	printf("Deleting edge %d -> %d\n", e->Org->id, e->Dest->id);
 	delete_edge(e);
 	e = t;
+	printf("Now using %d -> %d to search\n", e->Org->id, e->Dest->id);
+	printf("With next edges %d -> %d, %d -> %d, %d -> %d\n", lnext(e)->Org->id, lnext(e)->Dest->id, 
+		lnext(lnext(e))->Org->id, lnext(lnext(e))->Dest->id, lprev(e)->Org->id, lprev(e)->Dest->id);
 	Edge *base = make_edge();
 	Point *first = e->Org;
 	set_equal(base->Org, first);
@@ -299,8 +303,11 @@ Edge *prepare_on(Point *x, Edge *e, Edge *t)
 	splice(base, e);
 	do {
 		base = connect(e, sym(base));
+		printf("New edge %d -> %d\n", base->Org->id, base->Dest->id);
 		e = oprev(base);
+		printf("e is now %d -> %d\n", e->Org->id, e->Dest->id);
 	} while (!equal(e->Dest, first));
+	printf("done\n");
 	return base;
 }
 // assume x lies strictly inside e's left face.
@@ -326,7 +333,8 @@ void insert_site(Point *x, Edge *existing, int fast, Node **loc_tree)
 	// make sure x doesn't lie on an existing vertex
 	if (!lexico_comp(x, e->Org) || !lexico_comp(x, e->Dest)) return;
 	Edge *base;
-	Point *first = e->Org;
+	Point first;
+	set_equal(&first, e->Org);
 	if (on(x, e)) {
 		if (fast) base = extend_on(x, e);
 		else {
@@ -345,8 +353,13 @@ void insert_site(Point *x, Edge *existing, int fast, Node **loc_tree)
 			if (fast) swap_location(e);
 			else swap(e);
 			e = oprev(e);
-		} else if (equal(e->Org, first)) return;
-		else e = lprev(onext(e));
+			printf("New e is %d -> %d\n", e->Org->id, e->Dest->id);
+			printf("lprev(onext(lprev(onext(e)))) is %d -> %d\n", lprev(onext(lprev(onext(e))))->Org->id, lprev(onext(lprev(onext(e))))->Dest->id);
+		} else if (equal(e->Org, &first)) return;
+		else {
+			e = lprev(onext(e));
+			//printf("New e is %d -> %d\n", e->Org->id, e->Dest->id);
+		}
 	} while(1);
 }
 // triangulation handler
@@ -357,6 +370,7 @@ Edge *delaunay(int random, int fast, read_io *io, int *max_index)
 	Point max = {io->point_list[0], io->point_list[1], 0};
 	int index = 0;
 	// find lexico. max input point to use in bounding triangle
+	printf("Finding max point\n");
 	for (i = 1; i < io->num_points; i++) {
 		x = io->point_list[2*i]; 
 		y = io->point_list[2*i+1];
@@ -379,8 +393,9 @@ Edge *delaunay(int random, int fast, read_io *io, int *max_index)
 	set_equal(a->Org, &neg2); 
 	set_equal(a->Dest, &max);
 	// initialize DAG if fast flag is set
-	Node **loc_tree;
-	if (fast) initialize(a, loc_tree);
+	Node *loc_tree;
+	printf("Initializing DAG\n");
+	if (fast) initialize(a, &loc_tree);
 
 	set_equal(b->Org, &max);
 	set_equal(b->Dest, &neg1); 
@@ -392,6 +407,7 @@ Edge *delaunay(int random, int fast, read_io *io, int *max_index)
 		shuffle(random_indices, io->num_points);
 	}
 	// insert points! 
+	printf("Inserting points\n");
 	for (i = 0; i < io->num_points; i++) {
 		if (random) index = random_indices[i];
 		else index = i;
@@ -399,8 +415,9 @@ Edge *delaunay(int random, int fast, read_io *io, int *max_index)
 		else {
 			x = io->point_list[2*index];
 			y = io->point_list[2*index+1];
+			printf("Inserting point (%f, %f)\n", x, y);
 			Point p = {x, y, index+1};
-			insert_site(&p, a, fast, loc_tree);
+			insert_site(&p, a, fast, &loc_tree);
 		}
 	}
 	// free DAG
@@ -414,6 +431,7 @@ int main(int argc, char *argv[])
 	exactinit();
 
 	command_line input_args = {0,0,NULL,NULL};
+	printf("Reading command line\n");
 	int error = read_input(argc, argv, &input_args);
 	if (error) {
 		printf("Error reading command line\n");
@@ -421,6 +439,7 @@ int main(int argc, char *argv[])
 	}
 	FILE *file;
 	file = fopen(input_args.in_filename, "r");
+	printf("Reading input file\n");
 	if (file == (FILE *) NULL) {
 		printf("Error reading input file\n");
 		return 1;
@@ -433,9 +452,13 @@ int main(int argc, char *argv[])
 		printf("Error reading input file\n");
 		return 1;
 	}
+	clock_t time = clock();
 	int max_index;
 	// construct triangulation. e is any edge in the result
+	printf("Triangulating\n");
 	Edge *e = delaunay(input_args.randomized, input_args.fast, &io, &max_index);
+	time = clock() - time;
+	printf("Running time %lu ms\n", time * 1000 / CLOCKS_PER_SEC);
 	// write results
 	file = fopen(input_args.out_filename, "w");
 	if (file == (FILE *) NULL) {

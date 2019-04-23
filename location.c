@@ -81,8 +81,7 @@ Edge *find(Point *p, Node *n)
 //
 Edge *extend_on(Point *p, Edge *e)
 {
-	
-	printf("Point %d on existing edge\n", p->id);
+	printf("Extending point on edge\n");
 	// need this to pass into the method in triangle.c
 	Edge *t = oprev(e);
 
@@ -160,6 +159,7 @@ Edge *extend_on(Point *p, Edge *e)
 //
 Edge *extend_in(Point *x, Edge *e)
 {
+	printf("Extending point inside face\n");
 	Edge *e1 = e;
 	Edge *e2 = lnext(e1);
 	Edge *e3 = lprev(e1);
@@ -167,6 +167,7 @@ Edge *extend_in(Point *x, Edge *e)
 	
 	// do updates in triangulation
 	// keep base to give back to insert_site
+	printf("Updating triangulation\n");
 	Edge *base = prepare_in(x, e);
 	
 	// create 3 new faces
@@ -228,6 +229,7 @@ Edge *extend_in(Point *x, Edge *e)
 //
 void swap_location(Edge *e)
 {
+	printf("Swapping edge %d -> %d\n", e->Org->id, e->Dest->id);	
 	
 	Edge *e1 = lnext(e);
 	Edge *e2 = lnext(sym(e));
@@ -264,7 +266,7 @@ void swap_location(Edge *e)
 	// free old faces
 	free(D1->pointers); free(D1); 
 	free(D2->pointers); free(D2);
-
+	printf("Done swapping\n");
 }
 
 void free_nodes(Node **root)

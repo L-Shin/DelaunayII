@@ -1,9 +1,7 @@
 #ifndef PREDICATES_H_
 #define PREDICATES_H_
-#define REAL double
 
-REAL orient2d(REAL *pa, REAL *pb, REAL *pc);
-REAL incircle(REAL *pa, REAL *pb, REAL *pc, REAL *pd);
+double incircle(double *p1, double *p2, double *p3, double *p4);
+double orient2d(double *p1, double *p2, double *p3);
 void exactinit();
-
 #endif // PREDICATES_H_
