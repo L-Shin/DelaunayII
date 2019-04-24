@@ -1,6 +1,9 @@
 #include "triangle.h"
 #include <stdlib.h>
 #include <stdio.h>
+
+
+
 int compare(Point *p, Node *n) // -1 if p left, 0 if p on, 1 if p right
 {
 	if (n->type == 0) { // n is an edge (internal node of the DAG) 
@@ -24,6 +27,7 @@ Node *search(Point *p, Node *n)
 }
 Node *init_edge(Edge *e)
 {
+//	printf("Creating edge node %d -> %d\n", e->Org->id, e->Dest->id);
 	Node *n = malloc(sizeof(Node));
 	n->type = 0; // edge node
 	n->edge = NULL; // won't use this
@@ -81,7 +85,7 @@ Edge *find(Point *p, Node *n)
 //
 Edge *extend_on(Point *p, Edge *e)
 {
-	printf("Extending point on edge\n");
+	//printf("Extending point on edge\n");
 	// need this to pass into the method in triangle.c
 	Edge *t = oprev(e);
 
@@ -138,6 +142,7 @@ Edge *extend_on(Point *p, Edge *e)
 	for (i = 0; i < D2->num_pointers; i++) *(D2->pointers[i]) = epp;
 	
 	// free old faces
+//	printf("Freeing old faces\n");
 	free(D1->pointers); free(D1);
 	free(D2->pointers); free(D2);
 	
@@ -159,7 +164,7 @@ Edge *extend_on(Point *p, Edge *e)
 //
 Edge *extend_in(Point *x, Edge *e)
 {
-	printf("Extending point inside face\n");
+	//printf("Extending point inside face\n");
 	Edge *e1 = e;
 	Edge *e2 = lnext(e1);
 	Edge *e3 = lprev(e1);
@@ -167,7 +172,7 @@ Edge *extend_in(Point *x, Edge *e)
 	
 	// do updates in triangulation
 	// keep base to give back to insert_site
-	printf("Updating triangulation\n");
+	//printf("Updating triangulation\n");
 	Edge *base = prepare_in(x, e);
 	
 	// create 3 new faces
@@ -209,6 +214,7 @@ Edge *extend_in(Point *x, Edge *e)
 	set_left_face(e1, D1); set_left_face(e2, D2); set_left_face(e3, D3);
 	
 	// free old face
+//	printf("Freeing old faces\n");
 	free(D->pointers);
 	free(D);
 	
@@ -229,7 +235,7 @@ Edge *extend_in(Point *x, Edge *e)
 //
 void swap_location(Edge *e)
 {
-	printf("Swapping edge %d -> %d\n", e->Org->id, e->Dest->id);	
+	//printf("Swapping edge %d -> %d\n", e->Org->id, e->Dest->id);	
 	
 	Edge *e1 = lnext(e);
 	Edge *e2 = lnext(sym(e));
@@ -264,9 +270,10 @@ void swap_location(Edge *e)
 	for (i = 0; i < D2->num_pointers; i++) *((D2->pointers)[i]) = ep;
 	
 	// free old faces
+//	printf("Freeing old faces\n");
 	free(D1->pointers); free(D1); 
 	free(D2->pointers); free(D2);
-	printf("Done swapping\n");
+	//printf("Done swapping\n");
 }
 
 void free_nodes(Node **root)
@@ -274,19 +281,20 @@ void free_nodes(Node **root)
 	if (root == NULL) return;
 	else if (*root == NULL) return;
 	else if ((*root)->type == 0) {
-		printf("edge node %d -> %d\n", (*root)->Org->id, (*root)->Dest->id);
-		printf("freeing org\n");
+//		printf("edge node %d -> %d\n", (*root)->Org->id, (*root)->Dest->id);
+//		printf("freeing org\n");
 		free((*root)->Org);
-		printf("freeint dest\n");
+		//printf("freeint dest\n");
+//		printf("Freeing edge dest\n");
 		free((*root)->Dest);
 		free_nodes(&((*root)->left));
 		free_nodes(&((*root)->right));
 	} else {
 		
-		printf("freeing pointers\n");
+//		printf("freeing pointers\n");
 		free((*root)->pointers);
 	}
-	printf("freeing node\n");
+//	printf("freeing node\n");
 	free(*root);
 	*root = NULL;
 }

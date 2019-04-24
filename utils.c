@@ -1,9 +1,16 @@
 #include "triangle.h"
 #define INPUTLINESIZE 1024
+
+
+
+
+/////// QUEUE USED TO PRINT OUTPUT ///////////
+
+
+
 // data structures used for the queue 
 // in order to record all triangles in the
 // .ele output file
-
 void enqueue(node_t **head, Edge *val) 
 {
 	node_t *new_node = malloc(sizeof(node_t));
@@ -42,6 +49,12 @@ Edge *dequeue(node_t **head) {
 	return retval;
 }
 
+
+
+//////// RANDOM POINT INSERTION /////////////
+
+
+
 void swap_ints(int *a, int *b)
 {
 	int temp = *a;
@@ -61,11 +74,87 @@ void shuffle(int *array, int length)
 		swap_ints(&array[i], &array[j]);
 	}
 }
+
+
+
+// boring util
 int min(int i, int j)
 {
 	if (i <= j) return i; 
 	else return j;
 }
+
+
+
+
+////////// READ COMMAND LINE ARGS //////////////////
+
+
+
+int read_input(int argc, char *argv[], command_line *input_args)
+{
+	int opt;
+	opterr = 0;
+	int index;
+	while((opt = getopt(argc, argv, "rfi:o:")) != -1)
+	{
+		switch(opt)
+		{
+			case 'r':
+				input_args->randomized = 1;
+				break;
+			case 'f':
+				input_args->fast = 1;
+				break;
+			case 'i':
+				input_args->in_filename = optarg;
+				break;
+			case 'o':
+				input_args->out_filename = optarg;
+				break;
+			case '?':
+				if (optopt == 'i') {
+					printf("Please specify input filename\n");
+					return 1;
+				} else if (optopt == 'o') {
+					input_args->out_filename = "output.ele";
+					break;	
+				} else {
+					printf("Unknown option\n");
+					return 1;
+				}
+			default:
+				abort();
+		}
+	}
+	if (!input_args->in_filename) {
+		printf("Please specify input filename\n");
+		return 1;
+	}
+	if (!input_args->out_filename) {
+		input_args->out_filename = "output.ele";
+	}
+	if (input_args->randomized) printf("Randomized insertion.\n");
+	else printf("NOT randomized insertion.\n");
+	if (input_args->fast) printf("Fast point location!\n");
+	else printf("Slow point location :(\n");
+	printf("Input filename is: %s\n", input_args->in_filename);
+	printf("Output filename is: %s\n", input_args->out_filename);
+	for(index = optind; index < argc; index ++) {
+		printf("Extra argument not used: %s\n", argv[index]);
+	}
+	return 0;
+}
+
+
+
+
+////// READ .node INPUT FILE /////////////////
+// basically all stolen from https://github.com/wo80/Triangle/blob/master/src/Triangle/triangle_io.c
+
+
+
+
 // read line from input file--pretty much copied from
 // Shewchuk's Triangle file reading in Triangle/triangle_io.c
 char *readline(char *string, FILE *infile)
@@ -103,57 +192,7 @@ char *findfield(char *string)
 	}
 	return result;
 }
-int file_writenodes(FILE *file, Edge *e, read_io *io, int first_node, int max_index)
-{
-	// header
-	// this is wrong but we'll overwrite it later
-	fprintf(file, "%d 3 0\n", io->num_points);
-	node_t *q = NULL;
-	// initialize queue for finding all triangles 
-	enqueue(&q, e);
-	Point *p1; Point *p2; Point *p3;
-	int i = 1;
-	while (q) {
-		e = dequeue(&q);
-		if (e->trav == 2) continue; // left face already processed
-		else {	
-			e->trav = 2; // make sure each face only processed once
-			lnext(e)->trav = 2; lprev(e)->trav = 2;
-			// add edges of neighboring faces if they haven't yet been added to the queue
-			if (!(sym(e)->trav)) {
-				enqueue(&q, sym(e));
-				sym(e)->trav = 1; // make sure each edge only added once
-			} 
-			if (!(sym(lnext(e))->trav)) {
-				enqueue(&q, sym(lnext(e)));
-				sym(lnext(e))->trav = 1;
-			}
-			if (!(sym(lprev(e))->trav)) {
-				enqueue(&q, sym(lprev(e)));
-				sym(lprev(e))->trav = 1;
-			}
-			p1 = e->Org; p2 = e->Dest; p3 = lnext(e)->Dest;
-			// if any point is symbolic, skip the face
-			if (symbolic(p1) || symbolic(p2) || symbolic(p3)) {	
-				continue;
-			} else {
-				// write left face of current edge
-				// change id of lexico. max vertex
-				// points indexed at 1 in the data structure, so 
-				// update if were indexed at 0 in input file
-				// first_node is label of first node in input file (0 or 1)
-				if (p1->id == 0) p1->id = max_index + first_node;
-				if (p2->id == 0) p2->id = max_index + first_node;
-				if (p3->id == 0) p3->id = max_index + first_node;
-				fprintf(file, "%d %d %d %d\n", i - 1 + first_node, p1->id, p2->id, p3->id); 
-				i++;	
-			}			
-		}
-		// free memory if both faces of an edge have been processed					
-		if (sym(e)->trav == 2) delete_edge(e);
-	}
-	return i - 1;
-}
+
 // read vertices from a .node file. Inspiration from Triangle/triangle_io.c
 int file_readnodes(FILE *file, int *firstnode, read_io *io)
 {
@@ -213,59 +252,60 @@ int file_readnodes(FILE *file, int *firstnode, read_io *io)
 }
 
 
-// read command line args
 
-int read_input(int argc, char *argv[], command_line *input_args)
+//////////// WRITE .ele FILE OUTPUT //////////////////
+
+
+
+
+int file_writenodes(FILE *file, Edge *e, read_io *io, int first_node, int max_index)
 {
-	int opt;
-	opterr = 0;
-	int index;
-	while((opt = getopt(argc, argv, "rfi:o:")) != -1)
-	{
-		switch(opt)
-		{
-			case 'r':
-				input_args->randomized = 1;
-				break;
-			case 'f':
-				input_args->fast = 1;
-				break;
-			case 'i':
-				input_args->in_filename = optarg;
-				break;
-			case 'o':
-				input_args->out_filename = optarg;
-				break;
-			case '?':
-				if (optopt == 'i') {
-					printf("Please specify input filename\n");
-					return 1;
-				} else if (optopt == 'o') {
-					input_args->out_filename = "output.ele";
-					break;	
-				} else {
-					printf("Unknown option\n");
-					return 1;
-				}
-			default:
-				abort();
+	// header
+	// this is wrong but we'll overwrite it later
+	fprintf(file, "%d 3 0\n", io->num_points);
+	node_t *q = NULL;
+	// initialize queue for finding all triangles 
+	enqueue(&q, e);
+	Point *p1; Point *p2; Point *p3;
+	int i = 1;
+	while (q) {
+		e = dequeue(&q);
+		if (e->trav == 2) continue; // left face already processed
+		else {	
+			e->trav = 2; // make sure each face only processed once
+			lnext(e)->trav = 2; lprev(e)->trav = 2;
+			// add edges of neighboring faces if they haven't yet been added to the queue
+			if (!(sym(e)->trav)) {
+				enqueue(&q, sym(e));
+				sym(e)->trav = 1; // make sure each edge only added once
+			} 
+			if (!(sym(lnext(e))->trav)) {
+				enqueue(&q, sym(lnext(e)));
+				sym(lnext(e))->trav = 1;
+			}
+			if (!(sym(lprev(e))->trav)) {
+				enqueue(&q, sym(lprev(e)));
+				sym(lprev(e))->trav = 1;
+			}
+			p1 = e->Org; p2 = e->Dest; p3 = lnext(e)->Dest;
+			// if any point is symbolic, skip the face
+			if (symbolic(p1) || symbolic(p2) || symbolic(p3)) {	
+				continue;
+			} else {
+				// write left face of current edge
+				// change id of lexico. max vertex
+				// points indexed at 1 in the data structure, so 
+				// update if were indexed at 0 in input file
+				// first_node is label of first node in input file (0 or 1)
+				if (p1->id == 0) p1->id = max_index + first_node;
+				if (p2->id == 0) p2->id = max_index + first_node;
+				if (p3->id == 0) p3->id = max_index + first_node;
+				fprintf(file, "%d %d %d %d\n", i - 1 + first_node, p1->id, p2->id, p3->id); 
+				i++;	
+			}			
 		}
+		// free memory if both faces of an edge have been processed					
+		if (sym(e)->trav == 2) delete_edge(e);
 	}
-	if (!input_args->in_filename) {
-		printf("Please specify input filename\n");
-		return 1;
-	}
-	if (!input_args->out_filename) {
-		input_args->out_filename = "output.ele";
-	}
-	if (input_args->randomized) printf("Randomized insertion.\n");
-	else printf("NOT randomized insertion.\n");
-	if (input_args->fast) printf("Fast point location!\n");
-	else printf("Slow point location :(\n");
-	printf("Input filename is: %s\n", input_args->in_filename);
-	printf("Output filename is: %s\n", input_args->out_filename);
-	for(index = optind; index < argc; index ++) {
-		printf("Extra argument not used: %s\n", argv[index]);
-	}
-	return 0;
+	return i - 1;
 }

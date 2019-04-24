@@ -3,6 +3,14 @@
 #include <stdio.h>
 #include "triangle.h"
 
+
+
+
+///////// POINT UTILS /////////////
+
+
+
+
 // negative points (-1 and -2) are symbolic, see Dutch book
 int symbolic(Point *p) 
 {
@@ -77,6 +85,25 @@ int in_circle(Point *p1, Point *p2, Point *p3, Point *p4)
 	else return 0;		 
 } 
 
+// set fields of P1 to equal fields of p2
+// Used to update the Org/Dest of e and sym(e) simultaneously
+// and to create alias edges in the DAG
+void set_equal(Point *p1, Point *p2)
+{
+	p1->x = p2->x;
+	p1->y = p2->y;
+	p1->id = p2->id;
+}
+
+
+
+
+
+/////////// DAG UTILS CALLED FROM location.c ////////////
+
+
+
+
 // retrieve node in DAG corresponding to e's left face
 Node *left_face(Edge *e) 
 {
@@ -93,7 +120,15 @@ void set_left_face(Edge *e, Node *f)
 	}
 }
 
-//Basic edge operations//
+
+
+
+
+///////////// BASIC QUAD-EDGE OPERATIONS ////////////
+
+
+
+
 
 // rotate 90 deg ccw
 Edge *rot(Edge *e) 
@@ -145,15 +180,6 @@ Edge *make_edge()
 	e3->Org = dest; e3->Dest = org;
 	return e1;
 }
-// set fields of P1 to equal fields of p2
-// Used to update the Org/Dest of e and sym(e) simultaneously
-// and to create alias edges in the DAG
-void set_equal(Point *p1, Point *p2)
-{
-	p1->x = p2->x;
-	p1->y = p2->y;
-	p1->id = p2->id;
-}
 
 //splice edges. see Guibas/Stolfi paper
 void splice(Edge *a, Edge *b) 
@@ -190,6 +216,25 @@ void swap(Edge *e)
 	splice(e, lnext(a)); splice(sym(e), lnext(b));
 	set_equal(e->Org, a->Dest); set_equal(e->Dest, b->Dest);
 }
+
+Edge *connect(Edge *a, Edge *b) 
+{
+	Edge *e = make_edge();
+	set_equal(e->Org, a->Dest);
+	set_equal(e->Dest, b->Org);
+	splice(e, lnext(a));
+	splice(sym(e), b);
+	return e;
+}
+
+
+
+
+///////// POINT INSERTION HELPERS ///////////////
+
+
+
+
 // Use for real or symbolic points
 // Decides whether point p lies on the edge 
 int on(Point *p, Edge *e)
@@ -238,16 +283,6 @@ int left_of(Point *p, Edge *e)
 	if (symbolic(p) || symbolic(e->Org) || symbolic(e->Dest)) return left_of_symbolic(p, e->Org, e->Dest);
 	else return ccw(e->Org, e->Dest, p) == 1;
 }
-
-Edge *connect(Edge *a, Edge *b) 
-{
-	Edge *e = make_edge();
-	set_equal(e->Org, a->Dest);
-	set_equal(e->Dest, b->Org);
-	splice(e, lnext(a));
-	splice(sym(e), b);
-	return e;
-}
 // locate point p in triangulation that includes edge e somewhere
 // using Green/Sibson "walking" method
 // with some fixes to avoid infinite loops
@@ -285,30 +320,24 @@ int legal(Point *pi, Point *pj, Point *pk, Point *pl)
 	// See Dutch book p. 204
 	else return min(pk->id, pl->id) < min(pi->id, pj->id);  
 }
+
+
+
+
+////////// POINT INSERTION ///////////////
+
+
+
+
 // assume x lies on edge e.
 // delete edge e, and connect x to surrounding vertices
 // t = oprev(e)
 Edge *prepare_on(Point *x, Edge *e, Edge *t) 
 {
-	printf("Deleting edge %d -> %d\n", e->Org->id, e->Dest->id);
+	//printf("Deleting edge %d -> %d\n", e->Org->id, e->Dest->id);
 	delete_edge(e);
 	e = t;
-	printf("Now using %d -> %d to search\n", e->Org->id, e->Dest->id);
-	printf("With next edges %d -> %d, %d -> %d, %d -> %d\n", lnext(e)->Org->id, lnext(e)->Dest->id, 
-		lnext(lnext(e))->Org->id, lnext(lnext(e))->Dest->id, lprev(e)->Org->id, lprev(e)->Dest->id);
-	Edge *base = make_edge();
-	Point *first = e->Org;
-	set_equal(base->Org, first);
-	set_equal(base->Dest, x);
-	splice(base, e);
-	do {
-		base = connect(e, sym(base));
-		printf("New edge %d -> %d\n", base->Org->id, base->Dest->id);
-		e = oprev(base);
-		printf("e is now %d -> %d\n", e->Org->id, e->Dest->id);
-	} while (!equal(e->Dest, first));
-	printf("done\n");
-	return base;
+	return prepare_in(x, e);
 }
 // assume x lies strictly inside e's left face.
 // connect x to surrounding vertices
@@ -325,12 +354,15 @@ Edge *prepare_in(Point *x, Edge *e)
 	} while (!equal(e->Dest, first));
 	return base;
 }	
+//Edge *insert_site(Point *x, Edge *existing, int fast, Node **loc_tree)
 void insert_site(Point *x, Edge *existing, int fast, Node **loc_tree)
+
 {
 	Edge *e;
 	if (fast) e = find(x, *loc_tree);
 	else e = locate(x, existing);
 	// make sure x doesn't lie on an existing vertex
+//	if (!lexico_comp(x, e->Org) || !lexico_comp(x, e->Dest)) return existing;
 	if (!lexico_comp(x, e->Org) || !lexico_comp(x, e->Dest)) return;
 	Edge *base;
 	Point first;
@@ -353,15 +385,22 @@ void insert_site(Point *x, Edge *existing, int fast, Node **loc_tree)
 			if (fast) swap_location(e);
 			else swap(e);
 			e = oprev(e);
-			printf("New e is %d -> %d\n", e->Org->id, e->Dest->id);
-			printf("lprev(onext(lprev(onext(e)))) is %d -> %d\n", lprev(onext(lprev(onext(e))))->Org->id, lprev(onext(lprev(onext(e))))->Dest->id);
+//		} else if (equal(e->Org, &first)) return e;
 		} else if (equal(e->Org, &first)) return;
 		else {
 			e = lprev(onext(e));
-			//printf("New e is %d -> %d\n", e->Org->id, e->Dest->id);
 		}
 	} while(1);
 }
+
+
+
+
+///////////// TRIANGULATION //////////////////
+
+
+
+
 // triangulation handler
 Edge *delaunay(int random, int fast, read_io *io, int *max_index)
 {
@@ -370,7 +409,7 @@ Edge *delaunay(int random, int fast, read_io *io, int *max_index)
 	Point max = {io->point_list[0], io->point_list[1], 0};
 	int index = 0;
 	// find lexico. max input point to use in bounding triangle
-	printf("Finding max point\n");
+	//printf("Finding max point\n");
 	for (i = 1; i < io->num_points; i++) {
 		x = io->point_list[2*i]; 
 		y = io->point_list[2*i+1];
@@ -394,7 +433,6 @@ Edge *delaunay(int random, int fast, read_io *io, int *max_index)
 	set_equal(a->Dest, &max);
 	// initialize DAG if fast flag is set
 	Node *loc_tree;
-	printf("Initializing DAG\n");
 	if (fast) initialize(a, &loc_tree);
 
 	set_equal(b->Org, &max);
@@ -407,7 +445,6 @@ Edge *delaunay(int random, int fast, read_io *io, int *max_index)
 		shuffle(random_indices, io->num_points);
 	}
 	// insert points! 
-	printf("Inserting points\n");
 	for (i = 0; i < io->num_points; i++) {
 		if (random) index = random_indices[i];
 		else index = i;
@@ -415,13 +452,14 @@ Edge *delaunay(int random, int fast, read_io *io, int *max_index)
 		else {
 			x = io->point_list[2*index];
 			y = io->point_list[2*index+1];
-			printf("Inserting point (%f, %f)\n", x, y);
+			//printf("Inserting point (%f, %f)\n", x, y);
 			Point p = {x, y, index+1};
+//			e = insert_site(&p, e, fast, &loc_tree);
 			insert_site(&p, a, fast, &loc_tree);
 		}
 	}
 	// free DAG
-	// free_nodes(loc_tree); // this is broken
+	// free_nodes(&loc_tree); // this is broken
 	return a;
 }
 
