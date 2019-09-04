@@ -3,15 +3,21 @@
 #include <stdio.h>
 
 
+int leaf(Node *n) {
+	return n->type;
+}
 
 int compare(Point *p, Node *n) // -1 if p left, 0 if p on, 1 if p right
 {
-	if (n->type == 0) { // n is an edge (internal node of the DAG) 
+	if (leaf(n)) {
+		//printf("leaf\n");
+		return 0; // search reached leaf node, time to stop
+	} else { // n is an edge (internal node of the DAG) 
+		//printf("not leaf\n");
 		if (ccw(n->Dest, n->Org, p) > 0) {
 			return 1;
 		} else return -1; // if p lies on n's edge, go left
 	}
-	else return 0; // search reached a leaf node (time to stop)
 
 }
 
@@ -22,7 +28,9 @@ Node *search(Point *p, Node *n)
 			n = n->left;
 		} else if (compare(p, n) > 0) {
 			n = n->right;
-		} else return n;
+		} else {
+			return n;
+		}
 	}
 }
 Node *init_edge(Edge *e)
@@ -33,8 +41,8 @@ Node *init_edge(Edge *e)
 	n->edge = NULL; // won't use this
 	n->Org = malloc(sizeof(Point)); n->Dest = malloc(sizeof(Point)); // create copies in case e is destroyed
 	set_equal(n->Org, e->Org); set_equal(n->Dest, e->Dest);
-	n->pointers = NULL; // won't use this
-	n->num_pointers = 0; // won't use this
+	//n->pointers = NULL; // won't use this
+	//n->num_pointers = 0; // won't use this
 	return n;
 }
 // create new face node that lies to the left of e
@@ -47,17 +55,41 @@ Node *init_face(Edge *e)
 	n->Org = NULL; n->Dest = NULL; // won't use these
 	return n;
 }
+/*Node *new_node(Edge *a) {
+	Node *n = malloc(sizeof(Node));
+	n->left = NULL; n->right = NULL;
+	n->edge = a;
+	return n;
+}
+*/
+Node *left_face(Edge *e) { return e->face; }
+
+// update pointers to DAG for all edges that share e's left face
+void set_left_face(Edge *e, Node *f)
+{
+	Edge *next = lnext(e);
+	e->face = f;
+	while (next != e) {
+		next->face = f;
+		next = lnext(next);
+	}
+}
 
 // initialize DAG with the first (outer bounding) triangle. Assume the universe lies to the left of e
 void initialize(Edge *a, Node **root)
 {
 	*root = init_face(a); // initialize face node
-	(*root)->pointers = malloc(sizeof(Node***));
-	((*root)->pointers)[0]  = root; // only one pointer points to the new node
-	(*root)->num_pointers = 1;
 	set_left_face(a, *root); // set pointers from all edges in the triangulation 
 				// for which this is their left face
 }
+Node *repurpose(Node *n, Edge *e) {
+	n->type = 0;
+	n->edge = NULL;
+	n->Org = malloc(sizeof(Point)); n->Dest = malloc(sizeof(Point));
+	set_equal(n->Org, e->Org); set_equal(n->Dest, e->Dest);
+	return n;
+}
+
 
 Edge *find(Point *p, Node *n)
 {
@@ -85,7 +117,6 @@ Edge *find(Point *p, Node *n)
 //
 Edge *extend_on(Point *p, Edge *e)
 {
-	//printf("Extending point on edge\n");
 	// need this to pass into the method in triangle.c
 	Edge *t = oprev(e);
 
@@ -107,44 +138,24 @@ Edge *extend_on(Point *p, Edge *e)
 	Node *D3p = init_face(e3);
 	Node *D4p = init_face(e4);
 	
-	// create 2 new edges for comparison 
-	// (we will keep e in the DAG even though it no longer exists)
-	Node *ep = init_edge(lnext(e1));
-	Node *epp = init_edge(lprev(e2));
+	// alias D1 as new comparison node ep
+	Node *ep = repurpose(D1, lnext(e1));
 	
 	// set pointers for ep
 	ep->right = D3p; 
-	D3p->num_pointers = 1;
-	D3p->pointers = malloc(sizeof(Node***));
-	(D3p->pointers)[0] = &(ep->right);
 
 	ep->left = D1p;
-	D1p->num_pointers = 1;
-	D1p->pointers = malloc(sizeof(Node***));
-	(D1p->pointers)[0] = &(ep->left);
 
 	set_left_face(e1, D1p); set_left_face(e3, D3p);		
-	int i;
-	for (i = 0; i < D1->num_pointers; i++) *(D1->pointers[i]) = ep;
 	
 	// do same for epp
+	Node *epp = repurpose(D2, lprev(e2));
+
 	epp->right = D4p;
-	D4p->num_pointers = 1;
-	D4p->pointers = malloc(sizeof(Node***));
-	(D4p->pointers)[0] = &(epp->right);
 	
 	epp->left = D2p;
-	D2p->num_pointers = 1;
-	D2p->pointers = malloc(sizeof(Node***));
-	(D2p->pointers)[0] = &(epp->left);
 
 	set_left_face(e2, D2p); set_left_face(e4, D4p);
-	for (i = 0; i < D2->num_pointers; i++) *(D2->pointers[i]) = epp;
-	
-	// free old faces
-//	printf("Freeing old faces\n");
-	free(D1->pointers); free(D1);
-	free(D2->pointers); free(D2);
 	
 	return base;		
 }
@@ -172,16 +183,17 @@ Edge *extend_in(Point *x, Edge *e)
 	
 	// do updates in triangulation
 	// keep base to give back to insert_site
-	//printf("Updating triangulation\n");
 	Edge *base = prepare_in(x, e);
 	
 	// create 3 new faces
 	Node *D1 = init_face(e1);
 	Node *D2 = init_face(e2);
 	Node *D3 = init_face(e3);
+	
+	// alias old face as new comparison edge
+	Node *f1 = repurpose(D, lnext(e1));
 
-	// create 3 new comparison edges
-	Node *f1 = init_edge(lnext(e1));
+	// create 2 new comparison edges
 	Node *f2 = init_edge(lnext(e2));
 	Node *f3 = init_edge(lnext(e3));
 
@@ -193,30 +205,9 @@ Edge *extend_in(Point *x, Edge *e)
 	f1->right = f2;
 	f2->left = D2;
 	f2->right = D3;
-
-	D1->pointers = malloc(sizeof(Node***));
-	(D1->pointers)[0] = &(f3->right);
-	D1->num_pointers = 1;
-
-	D2->pointers = malloc(sizeof(Node***));
-	(D2->pointers)[0] = &(f2->left);
-	D2->num_pointers = 1;
-
-	D3->pointers = malloc(2*sizeof(Node***));
-	(D3->pointers)[0] = &(f2->right);
-	(D3->pointers)[1] = &(f3->left);
-	D3->num_pointers = 2;
-		
-	int i;
-	for (i = 0; i < D->num_pointers; i++) *((D->pointers)[i]) = f1;
 	
 	// set pointers from appropriate edges in triangulation
 	set_left_face(e1, D1); set_left_face(e2, D2); set_left_face(e3, D3);
-	
-	// free old face
-//	printf("Freeing old faces\n");
-	free(D->pointers);
-	free(D);
 	
 	return base;	
 	
@@ -248,53 +239,15 @@ void swap_location(Edge *e)
 	// create 2 new faces
 	Node *D1p = init_face(e1);
 	Node *D2p = init_face(e2);
-
-	// create 1 new comparison edge (for the new swapped e)
-	Node *ep = init_edge(lnext(e1));
+	
+	// D1 and D2 must now be comparison edges for new swapped e
+	Node *ep = repurpose(D1, lnext(e1));
+	Node *epp = repurpose(D2, lnext(e1));
 
 	// set pointers
 	ep->left = D1p; ep->right = D2p;
-
-	D1p->pointers = malloc(sizeof(Node***));
-	(D1p->pointers)[0] = &(ep->left);
-	D1p->num_pointers = 1;
-
-	D2p->pointers = malloc(sizeof(Node***));
-	(D2p->pointers)[0] = &(ep->right);
-	D2p->num_pointers = 1;
+	epp->left = D1p; epp->right = D2p;
 
 	set_left_face(e1, D1p);
 	set_left_face(e2, D2p);
-	int i;
-	for (i = 0; i < D1->num_pointers; i++) *((D1->pointers)[i]) = ep;
-	for (i = 0; i < D2->num_pointers; i++) *((D2->pointers)[i]) = ep;
-	
-	// free old faces
-//	printf("Freeing old faces\n");
-	free(D1->pointers); free(D1); 
-	free(D2->pointers); free(D2);
-	//printf("Done swapping\n");
-}
-
-void free_nodes(Node **root)
-{
-	if (root == NULL) return;
-	else if (*root == NULL) return;
-	else if ((*root)->type == 0) {
-//		printf("edge node %d -> %d\n", (*root)->Org->id, (*root)->Dest->id);
-//		printf("freeing org\n");
-		free((*root)->Org);
-		//printf("freeint dest\n");
-//		printf("Freeing edge dest\n");
-		free((*root)->Dest);
-		free_nodes(&((*root)->left));
-		free_nodes(&((*root)->right));
-	} else {
-		
-//		printf("freeing pointers\n");
-		free((*root)->pointers);
-	}
-//	printf("freeing node\n");
-	free(*root);
-	*root = NULL;
 }

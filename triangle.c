@@ -99,31 +99,6 @@ void set_equal(Point *p1, Point *p2)
 
 
 
-/////////// DAG UTILS CALLED FROM location.c ////////////
-
-
-
-
-// retrieve node in DAG corresponding to e's left face
-Node *left_face(Edge *e) 
-{
-	return e->face;
-}
-// update pointers to DAG for all edges that share e's left face
-void set_left_face(Edge *e, Node *f)
-{
-	Edge *next = lnext(e);
-	e->face = f;
-	while(next != e) {
-		next->face = f;
-		next = lnext(next);
-	}
-}
-
-
-
-
-
 ///////////// BASIC QUAD-EDGE OPERATIONS ////////////
 
 
@@ -205,7 +180,7 @@ void delete_edge(Edge *e)
 		Edge *prev = e; e = rot(e);
 		free(prev);
 	}
-	free(e);
+	//free(e);
 }
 // switch triangulation of e's two adjacent faces
 void swap(Edge *e) 
@@ -433,8 +408,10 @@ Edge *delaunay(int random, int fast, read_io *io, int *max_index)
 	set_equal(a->Dest, &max);
 	// initialize DAG if fast flag is set
 	Node *loc_tree;
-	if (fast) initialize(a, &loc_tree);
-
+	if (fast) {
+		//printf("Initializing loc tree\n");
+		initialize(a, &loc_tree);
+	}
 	set_equal(b->Org, &max);
 	set_equal(b->Dest, &neg1); 
 	Edge *e = connect(b, a); 
@@ -459,7 +436,7 @@ Edge *delaunay(int random, int fast, read_io *io, int *max_index)
 		}
 	}
 	// free DAG
-	// free_nodes(&loc_tree); // this is broken
+	free_nodes(&loc_tree); // this is broken
 	return a;
 }
 

@@ -304,8 +304,6 @@ int file_writenodes(FILE *file, Edge *e, read_io *io, int first_node, int max_in
 				i++;	
 			}			
 		}
-		// free memory if both faces of an edge have been processed					
-		if (sym(e)->trav == 2) delete_edge(e);
 	}
 	return i - 1;
 }
