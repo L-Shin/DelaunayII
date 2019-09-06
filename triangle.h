@@ -1,8 +1,6 @@
-#include <unistd.h>
-#include <time.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <ctype.h>
+#include <time.h>
 #ifndef TRIANGLE_H_
 #define TRIANGLE_H_
 
@@ -77,38 +75,38 @@ void set_equal(Point *p1, Point *p2);
 
 int on(Point *p, Edge *e);
 
-void free_nodes(Node **root);
+//void free_nodes(Node **root);
 // data structure for queue
-typedef struct node {
-	Edge *val;
-	struct node *next;
-	struct node *prev;
-} node_t;
+//typedef struct node {
+//	Edge *val;
+//	struct node *next;
+//	struct node *prev;
+//} node_t;
 
-void enqueue(node_t **head, Edge *val);
+//void enqueue(node_t **head, Edge *val);
 
-Edge *dequeue(node_t **head);
+//Edge *dequeue(node_t **head);
 
-void shuffle(int *array, int length); 
+//void shuffle(int *array, int length); 
  
-int min(int i, int j);
+//int min(int i, int j);
 
 // Utility for parsing command line
-typedef struct {
-	int randomized;
-	int fast;
-	char *in_filename;
-	char *out_filename;
-} command_line;
+//typedef struct {
+//	int randomized;
+//	int fast;
+//	char *in_filename;
+//	char *out_filename;
+//} command_line;
 // Utility for reading the input .node file
-typedef struct {
-	int num_points;
-	double *point_list;
-} read_io;
+//typedef struct {
+//	int num_points;
+//	double *point_list;
+//} read_io;
 
-char *readline(char *string, FILE *infile);
-char *findfield(char *string);
-int file_readnodes(FILE *file, int *firstnode, read_io *io);
-int file_writenodes(FILE *file, Edge *e, read_io *io, int first_node, int max_index);
-int read_input(int argc, char *argv[], command_line *input_args);
+//char *readline(char *string, FILE *infile);
+//char *findfield(char *string);
+//int file_readnodes(FILE *file, int *firstnode, read_io *io);
+//int file_writenodes(FILE *file, Edge *e, read_io *io, int first_node, int max_index);
+//int read_input(int argc, char *argv[], command_line *input_args);
 #endif // TRIANGLE_H_

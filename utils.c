@@ -1,59 +1,20 @@
-#include "triangle.h"
+#include <stdlib.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <time.h>
+#include "utils.h"
 #define INPUTLINESIZE 1024
 
 
-
-
-/////// QUEUE USED TO PRINT OUTPUT ///////////
-
-
-
-// data structures used for the queue 
-// in order to record all triangles in the
-// .ele output file
-void enqueue(node_t **head, Edge *val) 
+// boring util
+int min(int i, int j)
 {
-	node_t *new_node = malloc(sizeof(node_t));
-	if (!new_node) return;
-	new_node->val = val;
-	if (*head == NULL) {
-		new_node->next = new_node;
-		new_node->prev = new_node;
-		*head = new_node;
-	} else {
-		node_t *tail = (*head)->prev;
-		new_node->next = *head;
-		(*head)->prev = new_node;
-		new_node->prev = tail;
-		tail->next = new_node;
-		*head = new_node;
-	}
-}
-
-Edge *dequeue(node_t **head) {
-	if((*head) == NULL) return NULL;
-	Edge *retval;
-	if ((*head)->prev != (*head)) {
-		node_t *tail = (*head)->prev;
-		node_t *new_tail = tail->prev;
-		retval = tail->val;
-		free(tail);
-		new_tail->next = *head;
-		(*head)->prev = new_tail;
-	} else {
-		retval = (*head)->val;
-		free(*head);
-		*head = NULL;
-	}
-		
-	return retval;
+	if (i <= j) return i; 
+	else return j;
 }
 
 
-
-//////// RANDOM POINT INSERTION /////////////
-
-
+////////// RANDOM POINT INSERTION //////////
 
 void swap_ints(int *a, int *b)
 {
@@ -76,20 +37,7 @@ void shuffle(int *array, int length)
 }
 
 
-
-// boring util
-int min(int i, int j)
-{
-	if (i <= j) return i; 
-	else return j;
-}
-
-
-
-
-////////// READ COMMAND LINE ARGS //////////////////
-
-
+////////// READ COMMAND LINE ARGS //////////
 
 int read_input(int argc, char *argv[], command_line *input_args)
 {
@@ -100,16 +48,16 @@ int read_input(int argc, char *argv[], command_line *input_args)
 	{
 		switch(opt)
 		{
-			case 'r':
+			case 'r': //randomized point insertion
 				input_args->randomized = 1;
 				break;
-			case 'f':
+			case 'f': //fast point location
 				input_args->fast = 1;
 				break;
-			case 'i':
+			case 'i': //input filename specified
 				input_args->in_filename = optarg;
 				break;
-			case 'o':
+			case 'o': //output filename specified
 				input_args->out_filename = optarg;
 				break;
 			case '?':
@@ -134,7 +82,7 @@ int read_input(int argc, char *argv[], command_line *input_args)
 	if (!input_args->out_filename) {
 		input_args->out_filename = "output.ele";
 	}
-	if (input_args->randomized) printf("Randomized insertion.\n");
+	if (input_args->randomized) printf("Randomized insertion\n");
 	else printf("NOT randomized insertion.\n");
 	if (input_args->fast) printf("Fast point location!\n");
 	else printf("Slow point location :(\n");
@@ -147,16 +95,13 @@ int read_input(int argc, char *argv[], command_line *input_args)
 }
 
 
+////////// READ .node INPUT FILE //////////
+
+// Basically all stolen from Prof. Shewchuk's awesome Triangle program at
+// https://github.com/wo80/Triangle/blob/master/src/Triangle/triangle_io.c
 
 
-////// READ .node INPUT FILE /////////////////
-// basically all stolen from https://github.com/wo80/Triangle/blob/master/src/Triangle/triangle_io.c
-
-
-
-
-// read line from input file--pretty much copied from
-// Shewchuk's Triangle file reading in Triangle/triangle_io.c
+// read line from input file 
 char *readline(char *string, FILE *infile)
 {
 	char *result;
@@ -174,7 +119,8 @@ char *readline(char *string, FILE *infile)
 	} while ((*result == '#') || (*result == '\0'));
 	return result;
 }
-// find the next field-copied from Triangle/triangle_io.c
+
+// find the next field
 char *findfield(char *string)
 {
 	char *result;
@@ -193,7 +139,7 @@ char *findfield(char *string)
 	return result;
 }
 
-// read vertices from a .node file. Inspiration from Triangle/triangle_io.c
+// Read vertices from a .node file. Write to read_io structure.
 int file_readnodes(FILE *file, int *firstnode, read_io *io)
 {
 	char inputline[INPUTLINESIZE];
@@ -251,59 +197,3 @@ int file_readnodes(FILE *file, int *firstnode, read_io *io)
 	return 0;
 }
 
-
-
-//////////// WRITE .ele FILE OUTPUT //////////////////
-
-
-
-
-int file_writenodes(FILE *file, Edge *e, read_io *io, int first_node, int max_index)
-{
-	// header
-	// this is wrong but we'll overwrite it later
-	fprintf(file, "%d 3 0\n", io->num_points);
-	node_t *q = NULL;
-	// initialize queue for finding all triangles 
-	enqueue(&q, e);
-	Point *p1; Point *p2; Point *p3;
-	int i = 1;
-	while (q) {
-		e = dequeue(&q);
-		if (e->trav == 2) continue; // left face already processed
-		else {	
-			e->trav = 2; // make sure each face only processed once
-			lnext(e)->trav = 2; lprev(e)->trav = 2;
-			// add edges of neighboring faces if they haven't yet been added to the queue
-			if (!(sym(e)->trav)) {
-				enqueue(&q, sym(e));
-				sym(e)->trav = 1; // make sure each edge only added once
-			} 
-			if (!(sym(lnext(e))->trav)) {
-				enqueue(&q, sym(lnext(e)));
-				sym(lnext(e))->trav = 1;
-			}
-			if (!(sym(lprev(e))->trav)) {
-				enqueue(&q, sym(lprev(e)));
-				sym(lprev(e))->trav = 1;
-			}
-			p1 = e->Org; p2 = e->Dest; p3 = lnext(e)->Dest;
-			// if any point is symbolic, skip the face
-			if (symbolic(p1) || symbolic(p2) || symbolic(p3)) {	
-				continue;
-			} else {
-				// write left face of current edge
-				// change id of lexico. max vertex
-				// points indexed at 1 in the data structure, so 
-				// update if were indexed at 0 in input file
-				// first_node is label of first node in input file (0 or 1)
-				if (p1->id == 0) p1->id = max_index + first_node;
-				if (p2->id == 0) p2->id = max_index + first_node;
-				if (p3->id == 0) p3->id = max_index + first_node;
-				fprintf(file, "%d %d %d %d\n", i - 1 + first_node, p1->id, p2->id, p3->id); 
-				i++;	
-			}			
-		}
-	}
-	return i - 1;
-}

@@ -1,6 +1,4 @@
 #include "triangle.h"
-#include <stdlib.h>
-#include <stdio.h>
 
 
 int leaf(Node *n) {

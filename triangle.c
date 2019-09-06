@@ -1,10 +1,120 @@
-#include "predicates.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
+#include "predicates.h"
 #include "triangle.h"
+#include "utils.h"
 
 
 
+
+/////// QUEUE USED TO PRINT OUTPUT ///////////
+
+typedef struct node {
+	Edge *val;
+	struct node *next;
+	struct node *prev;
+} node_t;
+
+// data structures used for the queue 
+// in order to record all triangles in the
+// .ele output file
+void enqueue(node_t **head, Edge *val) 
+{
+	node_t *new_node = malloc(sizeof(node_t));
+	if (!new_node) return;
+	new_node->val = val;
+	if (*head == NULL) {
+		new_node->next = new_node;
+		new_node->prev = new_node;
+		*head = new_node;
+	} else {
+		node_t *tail = (*head)->prev;
+		new_node->next = *head;
+		(*head)->prev = new_node;
+		new_node->prev = tail;
+		tail->next = new_node;
+		*head = new_node;
+	}
+}
+
+Edge *dequeue(node_t **head) {
+	if((*head) == NULL) return NULL;
+	Edge *retval;
+	if ((*head)->prev != (*head)) {
+		node_t *tail = (*head)->prev;
+		node_t *new_tail = tail->prev;
+		retval = tail->val;
+		free(tail);
+		new_tail->next = *head;
+		(*head)->prev = new_tail;
+	} else {
+		retval = (*head)->val;
+		free(*head);
+		*head = NULL;
+	}
+		
+	return retval;
+}
+
+
+
+//////////// WRITE .ele FILE OUTPUT //////////////////
+
+
+
+
+int file_writenodes(FILE *file, Edge *e, read_io *io, int first_node, int max_index)
+{
+	// header
+	// this is wrong but we'll overwrite it later
+	fprintf(file, "%d 3 0\n", io->num_points);
+	node_t *q = NULL;
+	// initialize queue for finding all triangles 
+	enqueue(&q, e);
+	Point *p1; Point *p2; Point *p3;
+	int i = 1;
+	while (q) {
+		e = dequeue(&q);
+		if (e->trav == 2) continue; // left face already processed
+		else {	
+			e->trav = 2; // make sure each face only processed once
+			lnext(e)->trav = 2; lprev(e)->trav = 2;
+			// add edges of neighboring faces if they haven't yet been added to the queue
+			if (!(sym(e)->trav)) {
+				enqueue(&q, sym(e));
+				sym(e)->trav = 1; // make sure each edge only added once
+			} 
+			if (!(sym(lnext(e))->trav)) {
+				enqueue(&q, sym(lnext(e)));
+				sym(lnext(e))->trav = 1;
+			}
+			if (!(sym(lprev(e))->trav)) {
+				enqueue(&q, sym(lprev(e)));
+				sym(lprev(e))->trav = 1;
+			}
+			p1 = e->Org; p2 = e->Dest; p3 = lnext(e)->Dest;
+			// if any point is symbolic, skip the face
+			if (symbolic(p1) || symbolic(p2) || symbolic(p3)) {	
+				continue;
+
+			} else {
+				// write left face of current edge
+				// change id of lexico. max vertex
+				// points indexed at 1 in the data structure, so 
+				// update if were indexed at 0 in input file
+				// first_node is label of first node in input file (0 or 1)
+				if (p1->id == 0) p1->id = max_index + first_node;
+				if (p2->id == 0) p2->id = max_index + first_node;
+				if (p3->id == 0) p3->id = max_index + first_node;
+				fprintf(file, "%d %d %d %d\n", i - 1 + first_node, p1->id, p2->id, p3->id); 
+				i++;	
+
+			}
+		}
+	}
+	return i-1;
+}
 
 ///////// POINT UTILS /////////////
 
@@ -436,7 +546,7 @@ Edge *delaunay(int random, int fast, read_io *io, int *max_index)
 		}
 	}
 	// free DAG
-	free_nodes(&loc_tree); // this is broken
+	//free_nodes(&loc_tree); // this is broken
 	return a;
 }
 
