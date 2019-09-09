@@ -35,10 +35,16 @@ void shuffle(int *array, int length)
 		swap_ints(&array[i], &array[j]);
 	}
 }
-
+// store indices [0, length-1] in 'array' and if 'shuffled' randomly shuffle 
+void generate_indices(int *array, int length, int shuffled)
+{
+	for (int i = 0; i < length; i++) array[i] = i;
+	if (shuffled) shuffle(array, length);
+}
 
 ////////// READ COMMAND LINE ARGS //////////
 
+// read command line input and store in 'command_line' object
 int read_input(int argc, char *argv[], command_line *input_args)
 {
 	int opt;
@@ -197,3 +203,72 @@ int file_readnodes(FILE *file, int *firstnode, read_io *io)
 	return 0;
 }
 
+
+
+/////////// FIND MAX POINT IN INPUT //////////////
+
+void find_max(read_io *io, int *max_index, Point *max)
+{
+	int i;
+	double x, y;
+	max->x = io->point_list[0];
+	max->y = io->point_list[1];
+	max->id = 0;
+	int index = 0;
+	for (i = 1; i < io->num_points; i++) {
+		x = io->point_list[2*i];
+		y = io->point_list[2*i+1];
+		if ((x > max->x) || ((x == max->x) && (y > max->y))) {
+			max->x = x;
+			max->y = y;
+			index = i;
+		}
+	}
+	*max_index = index;
+}
+
+/////// QUEUE USED TO PRINT OUTPUT ///////////
+
+// data structures used for the queue 
+// in order to record all triangles in the
+// .ele output file
+void enqueue(node_t **head, Edge *val) 
+{
+	node_t *new_node = malloc(sizeof(node_t));
+	if (!new_node) return;
+	new_node->val = val;
+	if (*head == NULL) {
+		new_node->next = new_node;
+		new_node->prev = new_node;
+		*head = new_node;
+	} else {
+		node_t *tail = (*head)->prev;
+		new_node->next = *head;
+		(*head)->prev = new_node;
+		new_node->prev = tail;
+		tail->next = new_node;
+		*head = new_node;
+	}
+}
+
+Edge *dequeue(node_t **head) 
+{
+	if((*head) == NULL) return NULL;
+	Edge *retval;
+	if ((*head)->prev != (*head)) {
+		node_t *tail = (*head)->prev;
+		node_t *new_tail = tail->prev;
+		retval = tail->val;
+		free(tail);
+		new_tail->next = *head;
+		(*head)->prev = new_tail;
+	} else {
+		retval = (*head)->val;
+		free(*head);
+		*head = NULL;
+	}
+		
+	return retval;
+}
+
+	
