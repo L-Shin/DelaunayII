@@ -17,7 +17,7 @@ For example, for randomized insertion and fast point location, run `./triangle -
 ### View
 I highly recommend you visualize triangulations with Shewchuk's [Show Me](https://www.cs.cmu.edu/~quake/showme.html) program. 
 
-![spiral.ele](spiral.ele.png)
+<img src="sprial.ele.png" width="50">
 
 ## Timings
 All timings exclude time required to read/write files and use randomized point insertion.
