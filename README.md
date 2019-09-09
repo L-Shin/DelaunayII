@@ -1,9 +1,9 @@
 # Delaunay Triangulation by Incremental Insertion
-This project implements two incremental insertion algorithms for constructing two-dimensional Delaunay triangulations, as described by [Leonidas J. Guibas and Jorge Stolfi, *Primitives for the Manipulation of General Subdivisions and the Computation of Voronoi Diagrams*](portal.acm.org/citation.cfm?doid=282918.282923), ACM Transactions on Graphics 4(2):74-123, April 1985. The algorithms use Guibas and Stolfi's quad-edge data structure. 
+This project implements two incremental insertion algorithms for constructing two-dimensional Delaunay triangulations, as described by [Leonidas J. Guibas and Jorge Stolfi, *Primitives for the Manipulation of General Subdivisions and the Computation of Voronoi Diagrams*](https://portal.acm.org/citation.cfm?doid=282918.282923), ACM Transactions on Graphics 4(2):74-123, April 1985. The algorithms use Guibas and Stolfi's quad-edge data structure. 
 
-The first algorithm uses Guibas and Stolfi's suboptimal "walking" method for point location. The second maintains a history DAG for optimal point location. In order to use a history DAG, points are inserted into an outer bounding triangle, consisting of two symbolic vertices and the lexicographically maximum point in the point set. See [Mark de Berk, Otfried Cheong, Marc van Krevald, and Mark Overmars, *Computational Geometry: Algorithms and Applications*, third edition, Springer-Verlag, 2008](www.cs.uu.nl/geobook/), Section 9, for more information.
+The first algorithm uses Guibas and Stolfi's suboptimal "walking" method for point location. The second maintains a history DAG for optimal point location. In order to use a history DAG, points are inserted into an outer bounding triangle, consisting of two symbolic vertices and the lexicographically maximum point in the point set. See [Mark de Berk, Otfried Cheong, Marc van Krevald, and Mark Overmars, *Computational Geometry: Algorithms and Applications*, third edition, Springer-Verlag, 2008](http://www.cs.uu.nl/geobook/), Section 9, for more information.
 ## Interface
-The program uses the same file formats as Jonathan R. Shewchuk's program [Triangle](www.cs.cmu.edu/~quake/triangle.html). It reads a file with the suffix [.node](www.cs.cmu.edu/~quake/triangle.node.html) and writes a file with suffix [.ele](www.cs.cmu.edu/~quake/triangle.ele.html). 
+The program uses the same file formats as Jonathan R. Shewchuk's program [Triangle](https://www.cs.cmu.edu/~quake/triangle.html). It reads a file with the suffix [.node](https://www.cs.cmu.edu/~quake/triangle.node.html) and writes a file with suffix [.ele](https://www.cs.cmu.edu/~quake/triangle.ele.html). 
 ### Compile
 The project folder contains a makefile. Specify your favorite C compiler in the makefile (default is gcc) and run `make` to compile the program into executable `triangle`. Alternatively, manually compile `triangle.c`, `utils.c`, and predicates.c`. 
 ### Run
@@ -15,6 +15,7 @@ Use the following command line switches:
 For example, for randomized insertion and fast point location, run `./triangle -rf -i spiral.node -o spiral.ele`. My program ignores boundary markers or attributes.
 ## Timings
 All timings exclude time required to read/write files, and use randomized point insertion.
+
 |              Runtime (ms)              |
 |----------------------------------------|
 |    | 10k nodes | 100k nodes | 1m nodes |
@@ -30,4 +31,4 @@ I was curious whether, in the case of structured inputs, the walking method migh
 However, with this change the walking method with randomized insertion took so long to run that I had to halt it. 
 See the test file `orderlygrid.node`.
 ## Borrowed code
-I borrowed most of the code from `readline()`, `findfield()`, and `file\_readnodes\_internal()` in `triangle\_io.c` of Jonathan R. Shewchuk's [Triangle](https://github.com/wo80/Triangle) program for reading input `.node` files. I also used `orient2d()` and `incircle()` from Shewchuk's [Fast Robust Predicates for Computational Geometry](www.cs.cmu.edu/~quake/robust.html). 
+I borrowed most of the code from `readline()`, `findfield()`, and `file\_readnodes\_internal()` in `triangle\_io.c` of Jonathan R. Shewchuk's [Triangle](https://github.com/wo80/Triangle) program for reading input `.node` files. I also used `orient2d()` and `incircle()` from Shewchuk's [Fast Robust Predicates for Computational Geometry](https://www.cs.cmu.edu/~quake/robust.html). 
